@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <title>CNEA 高頻觀測儀表</title>
+    <style>
+        body { background-color: #0a0a0a; color: #00ffcc; font-family: 'Courier New', monospace; padding: 20px; }
+        .dashboard { border: 1px solid #333; padding: 20px; border-radius: 5px; max-width: 600px; }
+        .data-row { margin: 10px 0; font-size: 1.1em; }
+        .wave-container { margin-top: 20px; }
+        .wave-bar-wrapper { display: flex; align-items: center; margin: 5px 0; }
+        .wave-label { width: 120px; color: #888; }
+        .wave-bar { height: 15px; background-color: #00ffcc; transition: width 0.05s linear; }
+        .status { color: #ff3366; }
+    </style>
+</head>
+<body>
+    <h2>[CNEA] 概率空間遙測儀表 (10Hz)</h2>
+    <div class="dashboard">
+        <div class="data-row">連線狀態: <span id="conn-status" class="status">DISCONNECTED</span></div>
+        <div class="data-row">時鐘週期 (Tick): <span id="tick">0</span></div>
+        <div class="data-row">系統總和商 (γ): <span id="gamma">0.0000</span></div>
+        <div class="data-row">蓋格衰變率 (λ): <span id="decay">0.0000</span></div>
+        
+        <div class="wave-container" id="waves">
+            </div>
+    </div>
+
+    <script>
+        const ws = new WebSocket("ws://127.0.0.1:8000/ws/telemetry");
+        const statusEl = document.getElementById("conn-status");
+        const wavesContainer = document.getElementById("waves");
+
+        // 初始化 5 條視覺化進度條
+        for(let i=0; i<5; i++) {
+            wavesContainer.innerHTML += `
+                <div class="wave-bar-wrapper">
+                    <div class="wave-label">邏輯分支 Ψ_${i}</div>
+                    <div class="wave-bar" id="bar-${i}" style="width: 0%;"></div>
+                </div>
+            `;
+        }
+
+        ws.onopen = () => {
+            statusEl.innerText = "CONNECTED (QUANTUM LINK ESTABLISHED)";
+            statusEl.style.color = "#00ffcc";
+        };
+
+        ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            
+            document.getElementById("tick").innerText = data.tick;
+            document.getElementById("gamma").innerText = data.gamma_quotient.toFixed(4);
+            document.getElementById("decay").innerText = data.decay_constant.toFixed(4);
+
+            // 更新波函數條狀圖長度
+            data.wavefunctions.forEach((val, index) => {
+                const bar = document.getElementById(`bar-${index}`);
+                if(bar) bar.style.width = `${val * 100}%`;
+            });
+        };
+
+        ws.onclose = () => {
+            statusEl.innerText = "CONNECTION LOST";
+            statusEl.style.color = "#ff3366";
+        };
+    </script>
+</body>
+</html>
