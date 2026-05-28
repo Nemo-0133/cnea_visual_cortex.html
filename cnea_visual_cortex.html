@@ -2,44 +2,61 @@
 <html lang="zh-Hant">
 <head>
     <meta charset="UTF-8">
-    <title>CNEA 高頻觀測儀表</title>
+    <title>CNEA 高頻觀測儀表 (線性版)</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        body { background-color: #0a0a0a; color: #00ffcc; font-family: 'Courier New', monospace; padding: 20px; }
-        .dashboard { border: 1px solid #333; padding: 20px; border-radius: 5px; max-width: 600px; }
+        body { background-color: #050505; color: #00ffcc; font-family: 'Courier New', monospace; padding: 20px; }
+        .dashboard { border: 1px solid #333; padding: 20px; border-radius: 5px; max-width: 800px; margin-bottom: 20px; background: #111;}
         .data-row { margin: 10px 0; font-size: 1.1em; }
-        .wave-container { margin-top: 20px; }
-        .wave-bar-wrapper { display: flex; align-items: center; margin: 5px 0; }
-        .wave-label { width: 120px; color: #888; }
-        .wave-bar { height: 15px; background-color: #00ffcc; transition: width 0.05s linear; }
         .status { color: #ff3366; }
+        .chart-container { width: 100%; max-width: 800px; background: #000; border: 1px solid #333; border-radius: 5px; padding: 10px;}
     </style>
 </head>
 <body>
-    <h2>[CNEA] 概率空間遙測儀表 (10Hz)</h2>
+    <h2>[CNEA] 概率空間遙測儀表 (動態光譜版)</h2>
     <div class="dashboard">
         <div class="data-row">連線狀態: <span id="conn-status" class="status">DISCONNECTED</span></div>
         <div class="data-row">時鐘週期 (Tick): <span id="tick">0</span></div>
         <div class="data-row">系統總和商 (γ): <span id="gamma">0.0000</span></div>
         <div class="data-row">蓋格衰變率 (λ): <span id="decay">0.0000</span></div>
-        
-        <div class="wave-container" id="waves">
-            </div>
+    </div>
+
+    <div class="chart-container">
+        <canvas id="waveChart"></canvas>
     </div>
 
     <script>
+        const ctx = document.getElementById('waveChart').getContext('2d');
+        const maxDataPoints = 50; // 畫面上保留的歷史軌跡長度
+        
+        // 建立 5 條不同顏色的波函數折線
+        const waveChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: Array(maxDataPoints).fill(''),
+                datasets: [
+                    { label: 'Ψ_0', borderColor: '#ff3366', data: Array(maxDataPoints).fill(0), borderWidth: 2, pointRadius: 0, tension: 0.4 },
+                    { label: 'Ψ_1', borderColor: '#33ccff', data: Array(maxDataPoints).fill(0), borderWidth: 2, pointRadius: 0, tension: 0.4 },
+                    { label: 'Ψ_2', borderColor: '#cc33ff', data: Array(maxDataPoints).fill(0), borderWidth: 2, pointRadius: 0, tension: 0.4 },
+                    { label: 'Ψ_3', borderColor: '#ffcc00', data: Array(maxDataPoints).fill(0), borderWidth: 2, pointRadius: 0, tension: 0.4 },
+                    { label: 'Ψ_4', borderColor: '#00ffcc', data: Array(maxDataPoints).fill(0), borderWidth: 2, pointRadius: 0, tension: 0.4 }
+                ]
+            },
+            options: {
+                responsive: true,
+                animation: false, // 關閉預設動畫以適應 10Hz 高頻刷新
+                scales: {
+                    y: { min: 0, max: 1, grid: { color: '#333' }, ticks: { color: '#888' } },
+                    x: { grid: { display: false }, ticks: { display: false } }
+                },
+                plugins: {
+                    legend: { labels: { color: '#ccc' } }
+                }
+            }
+        });
+
         const ws = new WebSocket("ws://127.0.0.1:8000/ws/telemetry");
         const statusEl = document.getElementById("conn-status");
-        const wavesContainer = document.getElementById("waves");
-
-        // 初始化 5 條視覺化進度條
-        for(let i=0; i<5; i++) {
-            wavesContainer.innerHTML += `
-                <div class="wave-bar-wrapper">
-                    <div class="wave-label">邏輯分支 Ψ_${i}</div>
-                    <div class="wave-bar" id="bar-${i}" style="width: 0%;"></div>
-                </div>
-            `;
-        }
 
         ws.onopen = () => {
             statusEl.innerText = "CONNECTED (QUANTUM LINK ESTABLISHED)";
@@ -53,11 +70,16 @@
             document.getElementById("gamma").innerText = data.gamma_quotient.toFixed(4);
             document.getElementById("decay").innerText = data.decay_constant.toFixed(4);
 
-            // 更新波函數條狀圖長度
+            // 將新數據推入陣列，並移除最舊的數據，形成動態滾動效果
+            waveChart.data.labels.push(data.tick);
+            waveChart.data.labels.shift();
+
             data.wavefunctions.forEach((val, index) => {
-                const bar = document.getElementById(`bar-${index}`);
-                if(bar) bar.style.width = `${val * 100}%`;
+                waveChart.data.datasets[index].data.push(val);
+                waveChart.data.datasets[index].data.shift();
             });
+
+            waveChart.update();
         };
 
         ws.onclose = () => {
